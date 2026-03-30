@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{userId} {
+      // Allow users to read/write their own data
+      // Allow admins to read all users (for dashboard stats)
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+      
+      match /profiles/{profileId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+    
+    match /content/{contentId} {
+      allow read: if true; 
+      allow write: if isAdmin();
+    }
+    
+    match /sections/{sectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Analytics Rules
+    match /viewing_logs/{logId} {
+      // Allow users to log start/end views
+      allow create: if isAuthenticated();
+      // Allow user to update their own log (e.g. for duration)
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Only admins read successfully
+      allow read: if isAdmin();
+    }
+
+    match /download_logs/{logId} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+    }
+
+    match /analytics/{logId} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+    }
+
+    // Content Requests Rules
+    match /content_requests/{requestId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Notifications Rules
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write, update: if isAdmin();
+      // Note: If users can mark global notifications as read (as in current Layout.tsx), 
+      // they would need update permission here, but that would affect all users.
+      // Keeping it admin-only for safety since it's a global feed.
+    }
+  }
+}
